@@ -1,3 +1,4 @@
+import type { ChannelSetupAdapter } from "openclaw/plugin-sdk/channel-runtime";
 import {
   applyAccountNameToChannelSection,
   applySetupAccountConfigPatch,
@@ -6,8 +7,7 @@ import {
   migrateBaseNameToDefaultAccount,
   normalizeAccountId,
   type OpenClawConfig,
-} from "openclaw/plugin-sdk/mattermost";
-import type { ChannelSetupAdapter } from "../../../src/channels/plugins/types.adapters.js";
+} from "./runtime-api.js";
 import { resolveMattermostAccount, type ResolvedMattermostAccount } from "./mattermost/accounts.js";
 import { normalizeMattermostBaseUrl } from "./mattermost/client.js";
 

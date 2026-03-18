@@ -1,5 +1,5 @@
-import { resolveChannelGroupRequireMention } from "openclaw/plugin-sdk/compat";
-import type { ChannelGroupContext } from "openclaw/plugin-sdk/mattermost";
+import { resolveChannelGroupRequireMention } from "openclaw/plugin-sdk/channel-policy";
+import type { ChannelGroupContext } from "./runtime-api.js";
 import { resolveMattermostAccount } from "./mattermost/accounts.js";
 
 export function resolveMattermostGroupRequireMention(
