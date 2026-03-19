@@ -6,10 +6,10 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { ResolvedMattermostAccount } from "../mattermost/accounts.js";
 import {
   buildModelsProviderData,
-  createReplyPrefixOptions,
-  createTypingCallbacks,
+  createChannelReplyPipeline,
   isRequestBodyLimitError,
   logTypingFailure,
   readRequestBodyWithLimit,
@@ -17,7 +17,6 @@ import {
   type ReplyPayload,
   type RuntimeEnv,
 } from "../runtime-api.js";
-import type { ResolvedMattermostAccount } from "../mattermost/accounts.js";
 import { getMattermostRuntime } from "../runtime.js";
 import {
   createMattermostClient,
@@ -466,29 +465,28 @@ async function handleSlashCommandAsync(params: {
     accountId: account.accountId,
   });
 
-  const { onModelSelected, ...prefixOptions } = createReplyPrefixOptions({
+  const { onModelSelected, typingCallbacks, ...replyPipeline } = createChannelReplyPipeline({
     cfg,
     agentId: route.agentId,
     channel: "mattermost",
     accountId: account.accountId,
+    typing: {
+      start: () => sendMattermostTyping(client, { channelId }),
+      onStartError: (err) => {
+        logTypingFailure({
+          log: (message) => log?.(message),
+          channel: "mattermost",
+          target: channelId,
+          error: err,
+        });
+      },
+    },
   });
   const humanDelay = core.channel.reply.resolveHumanDelayConfig(cfg, route.agentId);
 
-  const typingCallbacks = createTypingCallbacks({
-    start: () => sendMattermostTyping(client, { channelId }),
-    onStartError: (err) => {
-      logTypingFailure({
-        log: (message) => log?.(message),
-        channel: "mattermost",
-        target: channelId,
-        error: err,
-      });
-    },
-  });
-
   const { dispatcher, replyOptions, markDispatchIdle } =
     core.channel.reply.createReplyDispatcherWithTyping({
-      ...prefixOptions,
+      ...replyPipeline,
       humanDelay,
       deliver: async (payload: ReplyPayload) => {
         await deliverMattermostReplyPayload({
@@ -507,7 +505,7 @@ async function handleSlashCommandAsync(params: {
       onError: (err, info) => {
         runtime.error?.(`mattermost slash ${info.kind} reply failed: ${String(err)}`);
       },
-      onReplyStart: typingCallbacks.onReplyStart,
+      onReplyStart: typingCallbacks?.onReplyStart,
     });
 
   await core.channel.reply.withReplyDispatcher({
