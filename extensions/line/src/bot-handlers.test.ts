@@ -1,15 +1,19 @@
 import type { MessageEvent, PostbackEvent } from "@line/bot-sdk";
 import type { HistoryEntry } from "openclaw/plugin-sdk/reply-history";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LineAccountConfig } from "./types.js";
 
 // Avoid pulling in globals/pairing/media dependencies; this suite only asserts
 // allowlist/groupPolicy gating and message-context wiring.
-vi.mock("openclaw/plugin-sdk/runtime-env", () => ({
-  danger: (text: string) => text,
-  logVerbose: () => {},
-  shouldLogVerbose: () => false,
-}));
+vi.mock("openclaw/plugin-sdk/runtime-env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/runtime-env")>();
+  return {
+    ...actual,
+    danger: (text: string) => text,
+    logVerbose: () => {},
+    shouldLogVerbose: () => false,
+  };
+});
 
 const { readAllowFromStoreMock, upsertPairingRequestMock } = vi.hoisted(() => ({
   readAllowFromStoreMock: vi.fn(async () => [] as string[]),
@@ -69,6 +73,16 @@ let createLineWebhookReplayCache: typeof import("./bot-handlers.js").createLineW
 type LineWebhookContext = Parameters<typeof import("./bot-handlers.js").handleLineWebhookEvents>[1];
 
 const createRuntime = () => ({ log: vi.fn(), error: vi.fn(), exit: vi.fn() });
+
+function buildDefaultLineMessageContext() {
+  return {
+    ctxPayload: { From: "line:group:group-1" },
+    replyToken: "reply-token",
+    route: { agentId: "default" },
+    isGroup: true,
+    accountId: "default",
+  };
+}
 
 function createReplayMessageEvent(params: {
   messageId: string;
@@ -195,17 +209,24 @@ async function startInflightReplayDuplicate(params: {
 }
 
 describe("handleLineWebhookEvents", () => {
-  beforeAll(async () => {
+  beforeEach(async () => {
+    vi.resetModules();
+    buildLineMessageContextMock.mockReset();
+    buildLineMessageContextMock.mockImplementation(async () => ({
+      ctxPayload: { From: "line:group:group-1" },
+      replyToken: "reply-token",
+      route: { agentId: "default" },
+      isGroup: true,
+      accountId: "default",
+    }));
+    buildLinePostbackContextMock.mockReset();
+    buildLinePostbackContextMock.mockImplementation(async () => null as unknown);
+    readAllowFromStoreMock.mockReset();
+    readAllowFromStoreMock.mockImplementation(async () => [] as string[]);
+    upsertPairingRequestMock.mockReset();
+    upsertPairingRequestMock.mockImplementation(async () => ({ code: "CODE", created: true }));
     ({ handleLineWebhookEvents, createLineWebhookReplayCache } = await import("./bot-handlers.js"));
   });
-
-  beforeEach(() => {
-    buildLineMessageContextMock.mockClear();
-    buildLinePostbackContextMock.mockClear();
-    readAllowFromStoreMock.mockClear();
-    upsertPairingRequestMock.mockClear();
-  });
-
   it("blocks group messages when groupPolicy is disabled", async () => {
     const processMessage = vi.fn();
     const event = {
@@ -569,10 +590,11 @@ describe("handleLineWebhookEvents", () => {
       isRedelivery: true,
     });
     const { firstRun, secondRun } = await startInflightReplayDuplicate({ event, processMessage });
+    const firstFailure = expect(firstRun).rejects.toThrow("transient inflight failure");
+    const secondFailure = expect(secondRun).rejects.toThrow("transient inflight failure");
     rejectFirst?.(new Error("transient inflight failure"));
 
-    await expect(firstRun).rejects.toThrow("transient inflight failure");
-    await expect(secondRun).rejects.toThrow("transient inflight failure");
+    await Promise.all([firstFailure, secondFailure]);
     expect(processMessage).toHaveBeenCalledTimes(1);
   });
 
@@ -700,10 +722,7 @@ describe("handleLineWebhookEvents", () => {
 
   it("records unmentioned group messages as pending history", async () => {
     const processMessage = vi.fn();
-    const groupHistories = new Map<
-      string,
-      HistoryEntry[]
-    >();
+    const groupHistories = new Map<string, HistoryEntry[]>();
     const event = createTestMessageEvent({
       message: { id: "m-hist-1", type: "text", text: "hello history", quoteToken: "q-hist-1" },
       timestamp: 1700000000000,

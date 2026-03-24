@@ -1,9 +1,11 @@
-import { normalizeProviderId } from "../agents/model-selection.js";
 import type { OpenClawConfig } from "../config/config.js";
+import {
+  deepgramMediaUnderstandingProvider,
+  groqMediaUnderstandingProvider,
+} from "../plugin-sdk/media-understanding.js";
 import { loadOpenClawPlugins } from "../plugins/loader.js";
 import { getActivePluginRegistry } from "../plugins/runtime.js";
-import { deepgramMediaUnderstandingProvider } from "../../extensions/deepgram/media-understanding-provider.js";
-import { groqMediaUnderstandingProvider } from "../../extensions/groq/media-understanding-provider.js";
+import { normalizeMediaProviderId } from "./provider-id.js";
 import type { MediaUnderstandingProvider } from "./types.js";
 
 const PROVIDERS: MediaUnderstandingProvider[] = [
@@ -27,13 +29,7 @@ function mergeProviderIntoRegistry(
   registry.set(normalizedKey, merged);
 }
 
-export function normalizeMediaProviderId(id: string): string {
-  const normalized = normalizeProviderId(id);
-  if (normalized === "gemini") {
-    return "google";
-  }
-  return normalized;
-}
+export { normalizeMediaProviderId } from "./provider-id.js";
 
 export function buildMediaUnderstandingRegistry(
   overrides?: Record<string, MediaUnderstandingProvider>,
