@@ -42,6 +42,8 @@ function createPluginCandidate(params: {
   bundleFormat?: "codex" | "claude" | "cursor";
   packageManifest?: OpenClawPackageManifest;
   packageDir?: string;
+  bundledManifest?: PluginCandidate["bundledManifest"];
+  bundledManifestPath?: string;
 }): PluginCandidate {
   return {
     idHint: params.idHint,
@@ -52,6 +54,8 @@ function createPluginCandidate(params: {
     bundleFormat: params.bundleFormat,
     packageManifest: params.packageManifest,
     packageDir: params.packageDir,
+    bundledManifest: params.bundledManifest,
+    bundledManifestPath: params.bundledManifestPath,
   };
 }
 
@@ -77,6 +81,14 @@ function countDuplicateWarnings(registry: ReturnType<typeof loadPluginManifestRe
     (diagnostic) =>
       diagnostic.level === "warn" && diagnostic.message?.includes("duplicate plugin id"),
   ).length;
+}
+
+function hasPluginIdMismatchWarning(
+  registry: ReturnType<typeof loadPluginManifestRegistry>,
+): boolean {
+  return registry.diagnostics.some((diagnostic) =>
+    diagnostic.message.includes("plugin id mismatch"),
+  );
 }
 
 function prepareLinkedManifestFixture(params: { id: string; mode: "symlink" | "hardlink" }): {
@@ -305,6 +317,7 @@ describe("loadPluginManifestRegistry", () => {
           },
           label: "Matrix",
           description: "Matrix config",
+          preferOver: ["matrix-legacy"],
         },
       },
     });
@@ -332,23 +345,31 @@ describe("loadPluginManifestRegistry", () => {
         },
         label: "Matrix",
         description: "Matrix config",
+        preferOver: ["matrix-legacy"],
       },
     });
   });
 
   it("hydrates bundled channel config metadata onto manifest records", () => {
     const dir = makeTempDir();
-    writeManifest(dir, {
-      id: "telegram",
-      channels: ["telegram"],
-      configSchema: { type: "object" },
-    });
-
-    const registry = loadSingleCandidateRegistry({
-      idHint: "telegram",
-      rootDir: dir,
-      origin: "bundled",
-    });
+    const registry = loadRegistry([
+      createPluginCandidate({
+        idHint: "telegram",
+        rootDir: dir,
+        origin: "bundled",
+        bundledManifestPath: path.join(dir, "openclaw.plugin.json"),
+        bundledManifest: {
+          id: "telegram",
+          configSchema: { type: "object" },
+          channels: ["telegram"],
+          channelConfigs: {
+            telegram: {
+              schema: { type: "object" },
+            },
+          },
+        },
+      }),
+    ]);
 
     expect(registry.plugins[0]?.channelConfigs?.telegram).toEqual(
       expect.objectContaining({
@@ -546,72 +567,28 @@ describe("loadPluginManifestRegistry", () => {
     expect(countDuplicateWarnings(loadRegistry(candidates))).toBe(0);
   });
 
-  it("accepts provider-style id hints without warning", () => {
+  it.each([
+    { name: "provider-style", manifestId: "openai", idHint: "openai-provider" },
+    { name: "plugin-style", manifestId: "brave", idHint: "brave-plugin" },
+    { name: "sandbox-style", manifestId: "openshell", idHint: "openshell-sandbox" },
+    {
+      name: "media-understanding-style",
+      manifestId: "groq",
+      idHint: "groq-media-understanding",
+    },
+  ] as const)("accepts $name id hints without warning", ({ manifestId, idHint }) => {
     const dir = makeTempDir();
-    writeManifest(dir, { id: "openai", configSchema: { type: "object" } });
+    writeManifest(dir, { id: manifestId, configSchema: { type: "object" } });
 
-    const registry = loadRegistry([
-      createPluginCandidate({
-        idHint: "openai-provider",
-        rootDir: dir,
-        origin: "bundled",
-      }),
-    ]);
-
-    expect(registry.diagnostics.some((diag) => diag.message.includes("plugin id mismatch"))).toBe(
-      false,
-    );
-  });
-
-  it("accepts plugin-style id hints without warning", () => {
-    const dir = makeTempDir();
-    writeManifest(dir, { id: "brave", configSchema: { type: "object" } });
-
-    const registry = loadRegistry([
-      createPluginCandidate({
-        idHint: "brave-plugin",
-        rootDir: dir,
-        origin: "bundled",
-      }),
-    ]);
-
-    expect(registry.diagnostics.some((diag) => diag.message.includes("plugin id mismatch"))).toBe(
-      false,
-    );
-  });
-
-  it("accepts sandbox-style id hints without warning", () => {
-    const dir = makeTempDir();
-    writeManifest(dir, { id: "openshell", configSchema: { type: "object" } });
-
-    const registry = loadRegistry([
-      createPluginCandidate({
-        idHint: "openshell-sandbox",
-        rootDir: dir,
-        origin: "bundled",
-      }),
-    ]);
-
-    expect(registry.diagnostics.some((diag) => diag.message.includes("plugin id mismatch"))).toBe(
-      false,
-    );
-  });
-
-  it("accepts media-understanding-style id hints without warning", () => {
-    const dir = makeTempDir();
-    writeManifest(dir, { id: "groq", configSchema: { type: "object" } });
-
-    const registry = loadRegistry([
-      createPluginCandidate({
-        idHint: "groq-media-understanding",
-        rootDir: dir,
-        origin: "bundled",
-      }),
-    ]);
-
-    expect(registry.diagnostics.some((diag) => diag.message.includes("plugin id mismatch"))).toBe(
-      false,
-    );
+    expect(
+      hasPluginIdMismatchWarning(
+        loadSingleCandidateRegistry({
+          idHint,
+          rootDir: dir,
+          origin: "bundled",
+        }),
+      ),
+    ).toBe(false);
   });
 
   it("still warns for unrelated id hint mismatches", () => {
