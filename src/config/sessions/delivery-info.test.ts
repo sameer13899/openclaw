@@ -1,4 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { setActivePluginRegistry } from "../../plugins/runtime.js";
+import { createSessionConversationTestRegistry } from "../../test-utils/session-conversation-registry.js";
 import type { SessionEntry } from "./types.js";
 
 const storeState = vi.hoisted(() => ({
@@ -31,6 +33,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  setActivePluginRegistry(createSessionConversationTestRegistry());
   storeState.store = {};
 });
 
@@ -43,6 +46,23 @@ describe("extractDeliveryInfo", () => {
     expect(parseSessionThreadInfo("agent:main:slack:channel:C1:thread:123.456")).toEqual({
       baseSessionKey: "agent:main:slack:channel:C1",
       threadId: "123.456",
+    });
+    expect(
+      parseSessionThreadInfo(
+        "agent:main:matrix:channel:!room:example.org:thread:$AbC123:example.org",
+      ),
+    ).toEqual({
+      baseSessionKey: "agent:main:matrix:channel:!room:example.org",
+      threadId: "$AbC123:example.org",
+    });
+    expect(
+      parseSessionThreadInfo(
+        "agent:main:feishu:group:oc_group_chat:topic:om_topic_root:sender:ou_topic_user",
+      ),
+    ).toEqual({
+      baseSessionKey:
+        "agent:main:feishu:group:oc_group_chat:topic:om_topic_root:sender:ou_topic_user",
+      threadId: undefined,
     });
     expect(parseSessionThreadInfo("agent:main:telegram:dm:user-1")).toEqual({
       baseSessionKey: "agent:main:telegram:dm:user-1",
