@@ -12,6 +12,8 @@ import {
   resolveOpenAIPromptOverlayMode,
   shouldApplyOpenAIPromptOverlay,
 } from "./prompt-overlay.js";
+import { buildOpenAIRealtimeTranscriptionProvider } from "./realtime-transcription-provider.js";
+import { buildOpenAIRealtimeVoiceProvider } from "./realtime-voice-provider.js";
 import { buildOpenAISpeechProvider } from "./speech-provider.js";
 
 export default definePluginEntry({
@@ -23,10 +25,12 @@ export default definePluginEntry({
     api.registerCliBackend(buildOpenAICodexCliBackend());
     api.registerProvider(buildOpenAIProvider());
     api.registerProvider(buildOpenAICodexProviderPlugin());
+    api.registerImageGenerationProvider(buildOpenAIImageGenerationProvider());
+    api.registerRealtimeTranscriptionProvider(buildOpenAIRealtimeTranscriptionProvider());
+    api.registerRealtimeVoiceProvider(buildOpenAIRealtimeVoiceProvider());
     api.registerSpeechProvider(buildOpenAISpeechProvider());
     api.registerMediaUnderstandingProvider(openaiMediaUnderstandingProvider);
     api.registerMediaUnderstandingProvider(openaiCodexMediaUnderstandingProvider);
-    api.registerImageGenerationProvider(buildOpenAIImageGenerationProvider());
     if (promptOverlayMode !== "off") {
       api.on("before_prompt_build", (_event, ctx) =>
         shouldApplyOpenAIPromptOverlay({

@@ -3,6 +3,7 @@ import {
   GEMINI_UNSUPPORTED_SCHEMA_KEYWORDS,
 } from "../agents/schema/clean-for-gemini.js";
 import type { ModelCompatConfig } from "../config/types.models.js";
+import { applyModelCompatPatch } from "../plugins/provider-model-compat.js";
 import type {
   AnyAgentTool,
   ProviderNormalizeToolSchemasContext,
@@ -79,6 +80,13 @@ export function resolveXaiModelCompatPatch(): ModelCompatConfig {
   };
 }
 
+export function applyXaiModelCompat<T extends { compat?: unknown }>(model: T): T {
+  return applyModelCompatPatch(
+    model as T & { compat?: ModelCompatConfig },
+    resolveXaiModelCompatPatch(),
+  ) as T;
+}
+
 export function findUnsupportedSchemaKeywords(
   schema: unknown,
   path: string,
@@ -149,4 +157,19 @@ export function inspectGeminiToolSchemas(
     }
     return [{ toolName: tool.name, toolIndex, violations }];
   });
+}
+
+export type ProviderToolCompatFamily = "gemini";
+
+export function buildProviderToolCompatFamilyHooks(family: ProviderToolCompatFamily): {
+  normalizeToolSchemas: (ctx: ProviderNormalizeToolSchemasContext) => AnyAgentTool[];
+  inspectToolSchemas: (ctx: ProviderNormalizeToolSchemasContext) => ProviderToolSchemaDiagnostic[];
+} {
+  switch (family) {
+    case "gemini":
+      return {
+        normalizeToolSchemas: normalizeGeminiToolSchemas,
+        inspectToolSchemas: inspectGeminiToolSchemas,
+      };
+  }
 }
