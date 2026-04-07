@@ -15,6 +15,8 @@ import type {
   WebFetchProviderPlugin,
   WebSearchProviderPlugin,
 } from "../types.js";
+import { BUNDLED_PLUGIN_CONTRACT_SNAPSHOTS } from "./inventory/bundled-capability-metadata.js";
+import { uniqueStrings } from "./shared.js";
 import {
   loadVitestImageGenerationProviderContractRegistry,
   loadVitestMediaUnderstandingProviderContractRegistry,
@@ -50,6 +52,7 @@ type MusicGenerationProviderContractEntry = CapabilityContractEntry<MusicGenerat
 
 type PluginRegistrationContractEntry = {
   pluginId: string;
+  cliBackendIds: string[];
   providerIds: string[];
   speechProviderIds: string[];
   realtimeTranscriptionProviderIds: string[];
@@ -77,25 +80,30 @@ type ManifestContractKey =
 
 type ManifestRegistryContractKey = "webFetchProviders" | "webSearchProviders";
 
-function uniqueStrings(values: readonly string[]): string[] {
-  const result: string[] = [];
-  const seen = new Set<string>();
-  for (const value of values) {
-    if (seen.has(value)) {
-      continue;
-    }
-    seen.add(value);
-    result.push(value);
-  }
-  return result;
-}
-
 function resolveBundledManifestContracts(): PluginRegistrationContractEntry[] {
+  if (process.env.VITEST) {
+    return BUNDLED_PLUGIN_CONTRACT_SNAPSHOTS.map((entry) => ({
+      pluginId: entry.pluginId,
+      cliBackendIds: [...entry.cliBackendIds],
+      providerIds: [...entry.providerIds],
+      speechProviderIds: [...entry.speechProviderIds],
+      realtimeTranscriptionProviderIds: [...entry.realtimeTranscriptionProviderIds],
+      realtimeVoiceProviderIds: [...entry.realtimeVoiceProviderIds],
+      mediaUnderstandingProviderIds: [...entry.mediaUnderstandingProviderIds],
+      imageGenerationProviderIds: [...entry.imageGenerationProviderIds],
+      videoGenerationProviderIds: [...entry.videoGenerationProviderIds],
+      musicGenerationProviderIds: [...entry.musicGenerationProviderIds],
+      webFetchProviderIds: [...entry.webFetchProviderIds],
+      webSearchProviderIds: [...entry.webSearchProviderIds],
+      toolNames: [...entry.toolNames],
+    }));
+  }
   return loadPluginManifestRegistry({})
     .plugins.filter(
       (plugin) =>
         plugin.origin === "bundled" &&
-        (plugin.providers.length > 0 ||
+        (plugin.cliBackends.length > 0 ||
+          plugin.providers.length > 0 ||
           (plugin.contracts?.speechProviders?.length ?? 0) > 0 ||
           (plugin.contracts?.realtimeTranscriptionProviders?.length ?? 0) > 0 ||
           (plugin.contracts?.realtimeVoiceProviders?.length ?? 0) > 0 ||
@@ -109,6 +117,7 @@ function resolveBundledManifestContracts(): PluginRegistrationContractEntry[] {
     )
     .map((plugin) => ({
       pluginId: plugin.id,
+      cliBackendIds: uniqueStrings(plugin.cliBackends),
       providerIds: uniqueStrings(plugin.providers),
       speechProviderIds: uniqueStrings(plugin.contracts?.speechProviders ?? []),
       realtimeTranscriptionProviderIds: uniqueStrings(
