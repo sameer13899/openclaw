@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { importFreshModule } from "../../../test/helpers/import-fresh.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import type { TemplateContext } from "../templating.js";
 import { buildTestCtx } from "./test-ctx.js";
-import { importFreshModule } from "../../../test/helpers/import-fresh.js";
 
 const mocks = vi.hoisted(() => ({
   createModelSelectionState: vi.fn(),
@@ -16,6 +16,19 @@ function makeSessionEntry(overrides: Partial<SessionEntry> = {}): SessionEntry {
     sessionId: "session-id",
     updatedAt: Date.now(),
     ...overrides,
+  };
+}
+
+function makeTypingController() {
+  return {
+    onReplyStart: async () => {},
+    startTypingLoop: async () => {},
+    startTypingOnText: async () => {},
+    refreshTypingTtl: () => {},
+    isActive: () => false,
+    markRunComplete: () => {},
+    markDispatchIdle: () => {},
+    cleanup: vi.fn(),
   };
 }
 
@@ -83,7 +96,8 @@ async function loadResolveReplyDirectivesForTest() {
     resolveConfiguredDirectiveAliases: vi.fn(() => []),
   }));
   vi.doMock("./get-reply-directives-apply.js", () => ({
-    applyInlineDirectiveOverrides: (...args: unknown[]) => mocks.applyInlineDirectiveOverrides(...args),
+    applyInlineDirectiveOverrides: (...args: unknown[]) =>
+      mocks.applyInlineDirectiveOverrides(...args),
   }));
   vi.doMock("./get-reply-exec-overrides.js", () => ({
     resolveReplyExecOverrides: (...args: unknown[]) => mocks.resolveReplyExecOverrides(...args),
@@ -193,7 +207,7 @@ describe("resolveReplyDirectives", () => {
       commandAuthorized: false,
       defaultProvider: "openai",
       defaultModel: "gpt-4o-mini",
-      aliasIndex: new Map(),
+      aliasIndex: { byAlias: new Map(), byKey: new Map() },
       provider: "openai",
       model: "gpt-4o-mini",
       hasResolvedHeartbeatModelOverride: false,
@@ -242,5 +256,127 @@ describe("resolveReplyDirectives", () => {
         resolvedElevatedLevel: "on",
       }),
     });
+  });
+
+  it("uses the model reasoning default when thinking is off", async () => {
+    const resolveDefaultThinkingLevel = vi.fn(async () => "off");
+    const resolveDefaultReasoningLevel = vi.fn(async () => "on");
+    mocks.createModelSelectionState.mockResolvedValueOnce({
+      provider: "openai",
+      model: "gpt-4o-mini",
+      allowedModelKeys: new Set<string>(),
+      allowedModelCatalog: [],
+      resetModelOverride: false,
+      resolveDefaultThinkingLevel,
+      resolveDefaultReasoningLevel,
+    });
+    const { resolveReplyDirectives } = await loadResolveReplyDirectivesForTest();
+
+    const result = await resolveReplyDirectives({
+      ctx: buildTestCtx({
+        Body: "hello",
+        CommandBody: "hello",
+      }),
+      cfg: {},
+      agentId: "main",
+      agentDir: "/tmp/main-agent",
+      workspaceDir: "/tmp",
+      agentCfg: {},
+      sessionCtx: {
+        Body: "hello",
+        BodyStripped: "hello",
+        BodyForAgent: "hello",
+        CommandBody: "hello",
+        Provider: "whatsapp",
+      } as TemplateContext,
+      sessionEntry: makeSessionEntry(),
+      sessionStore: {},
+      sessionKey: "agent:main:whatsapp:+2000",
+      storePath: "/tmp/sessions.json",
+      sessionScope: "per-sender",
+      groupResolution: undefined,
+      isGroup: false,
+      triggerBodyNormalized: "hello",
+      commandAuthorized: false,
+      defaultProvider: "openai",
+      defaultModel: "gpt-4o-mini",
+      aliasIndex: { byAlias: new Map(), byKey: new Map() },
+      provider: "openai",
+      model: "gpt-4o-mini",
+      hasResolvedHeartbeatModelOverride: false,
+      typing: makeTypingController(),
+      opts: undefined,
+      skillFilter: undefined,
+    });
+
+    expect(result).toEqual({
+      kind: "continue",
+      result: expect.objectContaining({
+        resolvedThinkLevel: "off",
+        resolvedReasoningLevel: "on",
+      }),
+    });
+    expect(resolveDefaultReasoningLevel).toHaveBeenCalledOnce();
+  });
+
+  it("skips the model reasoning default when thinking is active", async () => {
+    const resolveDefaultThinkingLevel = vi.fn(async () => "low");
+    const resolveDefaultReasoningLevel = vi.fn(async () => "on");
+    mocks.createModelSelectionState.mockResolvedValueOnce({
+      provider: "openai",
+      model: "gpt-4o-mini",
+      allowedModelKeys: new Set<string>(),
+      allowedModelCatalog: [],
+      resetModelOverride: false,
+      resolveDefaultThinkingLevel,
+      resolveDefaultReasoningLevel,
+    });
+    const { resolveReplyDirectives } = await loadResolveReplyDirectivesForTest();
+
+    const result = await resolveReplyDirectives({
+      ctx: buildTestCtx({
+        Body: "hello",
+        CommandBody: "hello",
+      }),
+      cfg: {},
+      agentId: "main",
+      agentDir: "/tmp/main-agent",
+      workspaceDir: "/tmp",
+      agentCfg: {},
+      sessionCtx: {
+        Body: "hello",
+        BodyStripped: "hello",
+        BodyForAgent: "hello",
+        CommandBody: "hello",
+        Provider: "whatsapp",
+      } as TemplateContext,
+      sessionEntry: makeSessionEntry(),
+      sessionStore: {},
+      sessionKey: "agent:main:whatsapp:+2000",
+      storePath: "/tmp/sessions.json",
+      sessionScope: "per-sender",
+      groupResolution: undefined,
+      isGroup: false,
+      triggerBodyNormalized: "hello",
+      commandAuthorized: false,
+      defaultProvider: "openai",
+      defaultModel: "gpt-4o-mini",
+      aliasIndex: { byAlias: new Map(), byKey: new Map() },
+      provider: "openai",
+      model: "gpt-4o-mini",
+      hasResolvedHeartbeatModelOverride: false,
+      typing: makeTypingController(),
+      opts: undefined,
+      skillFilter: undefined,
+    });
+
+    expect(result).toEqual({
+      kind: "continue",
+      result: expect.objectContaining({
+        resolvedThinkLevel: "low",
+        resolvedReasoningLevel: "off",
+      }),
+    });
+    expect(resolveDefaultReasoningLevel).not.toHaveBeenCalled();
   });
 });
