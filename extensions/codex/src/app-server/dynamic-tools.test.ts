@@ -60,6 +60,7 @@ async function handleMessageToolCall(
     threadId: "thread-1",
     turnId: "turn-1",
     callId: "call-1",
+    namespace: null,
     tool: "message",
     arguments: arguments_,
   });
@@ -85,6 +86,7 @@ describe("createCodexDynamicToolBridge", () => {
         threadId: "thread-1",
         turnId: "turn-1",
         callId: "call-1",
+        namespace: null,
         tool: toolName,
         arguments: { prompt: "hello" },
       });
@@ -94,6 +96,41 @@ describe("createCodexDynamicToolBridge", () => {
       expect(bridge.telemetry.toolAudioAsVoice).toBe(audioAsVoice === true);
     },
   );
+
+  it("preserves audio-as-voice metadata from tts results", async () => {
+    const toolResult = {
+      content: [{ type: "text", text: "(spoken) hello" }],
+      details: {
+        media: {
+          mediaUrl: "/tmp/reply.opus",
+          audioAsVoice: true,
+        },
+      },
+    } satisfies AgentToolResult<unknown>;
+    const tool = createTool({
+      execute: vi.fn(async () => toolResult),
+    });
+    const bridge = createCodexDynamicToolBridge({
+      tools: [tool],
+      signal: new AbortController().signal,
+    });
+
+    const result = await bridge.handleToolCall({
+      threadId: "thread-1",
+      turnId: "turn-1",
+      callId: "call-1",
+      namespace: null,
+      tool: "tts",
+      arguments: { text: "hello" },
+    });
+
+    expect(result).toEqual({
+      success: true,
+      contentItems: [{ type: "inputText", text: "(spoken) hello" }],
+    });
+    expect(bridge.telemetry.toolMediaUrls).toEqual(["/tmp/reply.opus"]);
+    expect(bridge.telemetry.toolAudioAsVoice).toBe(true);
+  });
 
   it("records messaging tool side effects while returning concise text to app-server", async () => {
     const toolResult = {
@@ -198,6 +235,7 @@ describe("createCodexDynamicToolBridge", () => {
       threadId: "thread-1",
       turnId: "turn-1",
       callId: "call-1",
+      namespace: null,
       tool: "exec",
       arguments: { command: "git status" },
     });
@@ -220,6 +258,7 @@ describe("createCodexDynamicToolBridge", () => {
       threadId: "thread-1",
       turnId: "turn-1",
       callId: "call-1",
+      namespace: null,
       tool: "exec",
       arguments: { command: "pwd" },
     });

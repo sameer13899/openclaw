@@ -9,7 +9,7 @@ import {
   type EmbeddedRunAttemptParams,
   type EmbeddedRunAttemptResult,
   type MessagingToolSend,
-} from "openclaw/plugin-sdk/agent-harness";
+} from "openclaw/plugin-sdk/agent-harness-runtime";
 import {
   isJsonObject,
   type CodexServerNotification,
@@ -18,6 +18,7 @@ import {
   type JsonObject,
   type JsonValue,
 } from "./protocol.js";
+import { readCodexTurn } from "./protocol-validators.js";
 
 export type CodexAppServerToolTelemetry = {
   didSendViaMessagingTool: boolean;
@@ -114,6 +115,9 @@ export class CodexAppServerEventProjector {
         break;
       case "turn/completed":
         await this.handleTurnCompleted(params);
+        break;
+      case "rawResponseItem/completed":
+        this.handleRawResponseItemCompleted(params);
         break;
       case "error":
         this.promptError = readString(params, "message") ?? "codex app-server error";
@@ -424,6 +428,20 @@ export class CodexAppServerEventProjector {
     await this.maybeEndReasoning();
   }
 
+  private handleRawResponseItemCompleted(params: JsonObject): void {
+    const item = isJsonObject(params.item) ? params.item : undefined;
+    if (!item || readString(item, "role") !== "assistant") {
+      return;
+    }
+    const text = extractRawAssistantText(item);
+    if (!text) {
+      return;
+    }
+    const itemId = readString(item, "id") ?? `raw-assistant-${this.assistantItemOrder.length + 1}`;
+    this.rememberAssistantItem(itemId);
+    this.assistantTextByItem.set(itemId, text);
+  }
+
   private async maybeEndReasoning(): Promise<void> {
     if (!this.reasoningStarted || this.reasoningEnded) {
       return;
@@ -576,9 +594,18 @@ export class CodexAppServerEventProjector {
 
   private isNotificationForTurn(params: JsonObject): boolean {
     const threadId = readString(params, "threadId");
-    const turnId = readString(params, "turnId");
+    const turnId = readNotificationTurnId(params);
     return threadId === this.threadId && turnId === this.turnId;
   }
+}
+
+function readNotificationTurnId(record: JsonObject): string | undefined {
+  return readString(record, "turnId") ?? readNestedTurnId(record);
+}
+
+function readNestedTurnId(record: JsonObject): string | undefined {
+  const turn = record.turn;
+  return isJsonObject(turn) ? readString(turn, "id") : undefined;
 }
 
 function readString(record: JsonObject, key: string): string | undefined {
@@ -650,6 +677,24 @@ function splitPlanText(text: string): string[] {
 
 function collectTextValues(map: Map<string, string>): string[] {
   return [...map.values()].filter((text) => text.trim().length > 0);
+}
+
+function extractRawAssistantText(item: JsonObject): string | undefined {
+  const content = Array.isArray(item.content) ? item.content : [];
+  const text = content
+    .flatMap((entry) => {
+      if (!isJsonObject(entry)) {
+        return [];
+      }
+      const type = readString(entry, "type");
+      if (type !== "output_text" && type !== "text") {
+        return [];
+      }
+      const value = readString(entry, "text");
+      return value ? [value] : [];
+    })
+    .join("");
+  return text.trim() || undefined;
 }
 
 function itemKind(
@@ -753,28 +798,5 @@ function readItem(value: JsonValue | undefined): CodexThreadItem | undefined {
 }
 
 function readTurn(value: JsonValue | undefined): CodexTurn | undefined {
-  if (!isJsonObject(value)) {
-    return undefined;
-  }
-  const id = typeof value.id === "string" ? value.id : undefined;
-  const status = typeof value.status === "string" ? value.status : undefined;
-  if (!id || !status) {
-    return undefined;
-  }
-  const items = Array.isArray(value.items)
-    ? value.items.flatMap((item) => {
-        const parsed = readItem(item);
-        return parsed ? [parsed] : [];
-      })
-    : undefined;
-  return {
-    id,
-    status: status as CodexTurn["status"],
-    error: isJsonObject(value.error)
-      ? {
-          message: typeof value.error.message === "string" ? value.error.message : undefined,
-        }
-      : null,
-    items,
-  };
+  return readCodexTurn(value);
 }

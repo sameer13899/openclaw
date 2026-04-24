@@ -7,8 +7,6 @@ read_when:
 title: "Models CLI"
 ---
 
-# Models CLI
-
 See [/concepts/model-failover](/concepts/model-failover) for auth profile
 rotation, cooldowns, and how that interacts with fallbacks.
 Quick provider overview + examples: [/concepts/model-providers](/concepts/model-providers).
@@ -72,7 +70,7 @@ Provider configuration examples (including OpenCode) live in
 Use additive writes when updating `agents.defaults.models` by hand:
 
 ```bash
-openclaw config set agents.defaults.models '{"openai-codex/gpt-5.4":{}}' --strict-json --merge
+openclaw config set agents.defaults.models '{"openai/gpt-5.4":{}}' --strict-json --merge
 ```
 
 `openclaw config set` protects model/provider maps from accidental clobbers. A
@@ -192,7 +190,8 @@ Shows configured models by default. Useful flags:
 
 - `--all`: full catalog
 - `--local`: local providers only
-- `--provider <name>`: filter by provider
+- `--provider <id>`: filter by provider id, for example `moonshot`; display
+  labels from interactive pickers are not accepted
 - `--plain`: one model per line
 - `--json`: machine‑readable output
 
